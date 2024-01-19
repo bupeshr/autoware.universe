@@ -17,6 +17,7 @@
 #include "behavior_path_goal_planner_module/util.hpp"
 #include "behavior_path_planner_common/utils/path_safety_checker/objects_filtering.hpp"
 #include "behavior_path_planner_common/utils/path_utils.hpp"
+#include "behavior_path_planner_common/utils/utils.hpp"
 #include "lanelet2_extension/regulatory_elements/no_parking_area.hpp"
 #include "lanelet2_extension/regulatory_elements/no_stopping_area.hpp"
 #include "lanelet2_extension/utility/utilities.hpp"
@@ -169,11 +170,13 @@ GoalCandidates GoalSearcher::search()
         transformVector(vehicle_footprint_, tier4_autoware_utils::pose2transform(search_pose));
 
       if (isInAreas(transformed_vehicle_footprint, getNoParkingAreaPolygons(pull_over_lanes))) {
-        continue;
+        // break here to exclude goals located laterally in no_parking_areas
+        break;
       }
 
       if (isInAreas(transformed_vehicle_footprint, getNoStoppingAreaPolygons(pull_over_lanes))) {
-        continue;
+        // break here to exclude goals located laterally in no_stopping_areas
+        break;
       }
 
       if (LaneDepartureChecker::isOutOfLane(lanes, transformed_vehicle_footprint)) {

@@ -46,7 +46,6 @@ std::optional<PullOutPath> ShiftPullOut::plan(const Pose & start_pose, const Pos
 {
   const auto & route_handler = planner_data_->route_handler;
   const auto & common_parameters = planner_data_->parameters;
-  const auto & dynamic_objects = planner_data_->dynamic_object;
 
   const double backward_path_length =
     planner_data_->parameters.backward_path_length + parameters_.max_back_distance;
@@ -64,38 +63,21 @@ std::optional<PullOutPath> ShiftPullOut::plan(const Pose & start_pose, const Pos
     return std::nullopt;
   }
 
-  // extract stop objects in pull out lane for collision check
-  const auto [pull_out_lane_objects, others] =
-    utils::path_safety_checker::separateObjectsByLanelets(
-      *dynamic_objects, pull_out_lanes, utils::path_safety_checker::isPolygonOverlapLanelet);
-  const auto pull_out_lane_stop_objects = utils::path_safety_checker::filterObjectsByVelocity(
-    pull_out_lane_objects, parameters_.th_moving_object_velocity);
-
   // get safe path
   for (auto & pull_out_path : pull_out_paths) {
     auto & shift_path =
       pull_out_path.partial_paths.front();  // shift path is not separate but only one.
 
-    // check lane_departure and collision with path between pull_out_start to pull_out_end
-    PathWithLaneId path_start_to_end{};
+    // check lane_departure with path between pull_out_start to pull_out_end
+    PathWithLaneId path_shift_start_to_end{};
     {
       const size_t pull_out_start_idx = findNearestIndex(shift_path.points, start_pose.position);
+      const size_t pull_out_end_idx =
+        findNearestIndex(shift_path.points, pull_out_path.end_pose.position);
 
-      // calculate collision check end idx
-      const size_t collision_check_end_idx = std::invoke([&]() {
-        const auto collision_check_end_pose = motion_utils::calcLongitudinalOffsetPose(
-          shift_path.points, pull_out_path.end_pose.position,
-          parameters_.collision_check_distance_from_end);
-
-        if (collision_check_end_pose) {
-          return findNearestIndex(shift_path.points, collision_check_end_pose->position);
-        } else {
-          return shift_path.points.size() - 1;
-        }
-      });
-      path_start_to_end.points.insert(
-        path_start_to_end.points.begin(), shift_path.points.begin() + pull_out_start_idx,
-        shift_path.points.begin() + collision_check_end_idx + 1);
+      path_shift_start_to_end.points.insert(
+        path_shift_start_to_end.points.begin(), shift_path.points.begin() + pull_out_start_idx,
+        shift_path.points.begin() + pull_out_end_idx + 1);
     }
 
     // extract shoulder lanes from pull out lanes
@@ -139,14 +121,7 @@ std::optional<PullOutPath> ShiftPullOut::plan(const Pose & start_pose, const Pos
     // check lane departure
     if (
       parameters_.check_shift_path_lane_departure &&
-      lane_departure_checker_->checkPathWillLeaveLane(expanded_lanes, path_start_to_end)) {
-      continue;
-    }
-
-    // check collision
-    if (utils::checkCollisionBetweenPathFootprintsAndObjects(
-          vehicle_footprint_, path_start_to_end, pull_out_lane_stop_objects,
-          parameters_.collision_check_margin)) {
+      lane_departure_checker_->checkPathWillLeaveLane(expanded_lanes, path_shift_start_to_end)) {
       continue;
     }
 
